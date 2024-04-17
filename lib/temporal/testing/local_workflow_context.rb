@@ -39,6 +39,35 @@ module Temporal
         !disabled_releases.include?(change_name.to_s)
       end
 
+      def continue_as_new(workflow_class, *input, **args)
+        options = args.delete(:options) || {}
+        input << args unless args.empty?
+
+        execution = WorkflowExecution.new
+        workflow_id = SecureRandom.uuid
+        run_id = SecureRandom.uuid
+        execution_options = ExecutionOptions.new(workflow_class, options, config.default_execution_options)
+
+        child_metadata = Temporal::Metadata::Workflow.new(
+          namespace: execution_options.namespace,
+          id: workflow_id,
+          name: execution_options.name, # Workflow class name
+          run_id: run_id,
+          parent_id: @workflow_id,
+          parent_run_id: @run_id,
+          attempt: 1,
+          task_queue: execution_options.task_queue,
+          headers: execution_options.headers,
+          run_started_at: Time.now,
+          memo: {},
+        )
+        context = Temporal::Testing::LocalWorkflowContext.new(
+          execution, workflow_id, run_id, workflow_class.disabled_releases, child_metadata
+        )
+
+        workflow_class.execute_in_context(context, input)
+      end
+
       def execute_activity(activity_class, *input, **args)
         options = args.delete(:options) || {}
         input << args unless args.empty?
